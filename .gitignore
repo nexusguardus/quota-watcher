@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Wrangler
+.wrangler/
+.dev.vars
+.env
+.envrc
+.env.*.env
+!/.env.example
+
+# Build output
+dist/
+build/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# "Ignore local-only .env files used during development by the
+#  operator; the only tracked sample is .env.example"
+# Optional sample so ops team knows which secrets exist:
+# .env.example  →  tracked (when you create it)
+
+# Secrets — NEVER commit
+*.key
+*.pem
+secrets/
