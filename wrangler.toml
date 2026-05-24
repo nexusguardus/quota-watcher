@@ -8,5 +8,5 @@ ENVIRONMENT = "development"
 [[d1_databases]]
 binding = "DB"
 database_name = "quota_db"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "526b46dd-aec4-4275-95dc-4c120c28ace0"
 migrations_dir = "migrations"
