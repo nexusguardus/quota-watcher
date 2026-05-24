@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS providers (
 
   -- Budget
   budget_cap              REAL DEFAULT 0,
-  budget_quota_limit      INTEGER,
+  budget_quota_limit      REAL DEFAULT 0.0,  -- Optional fallback for unit-based APIs (characters, credits, requests)
   budget_quota_unit       TEXT,
   alert_threshold_percent REAL DEFAULT 80,
 

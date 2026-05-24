@@ -35,6 +35,15 @@ interface ModelPricingRow {
   output_cost_per_1m: number;
 }
 
+interface SnapshotInsert {
+  id: string;
+  org_id: string;
+  provider_id: string;
+  snapshot_date: string;
+  raw_payload: string;
+  derived_cost: number;
+}
+
 // ───────────────────────────────────────────────────────────────────────
 // CRYPTO HELPERS — AES-256-GCM via Web Crypto API
 // ───────────────────────────────────────────────────────────────────────
@@ -116,6 +125,7 @@ interface OpenAIUsageChunk {
   n_requests: number;
   n_context_tokens_total: number;
   n_generated_tokens_total: number;
+  model: string;           // model_id as returned by /v1/usage (includes ft: prefix for fine-tunes)
 }
 
 interface OpenAIUsageResponse {
@@ -146,19 +156,31 @@ async function pollOpenAI(
   let totalOutput = 0;
   let estimatedCost = 0;
 
+  // ── Load pricing from D1 (seed data covers all active models) ─────────
+  const pricingRows = await env.DB.prepare(
+    "SELECT model_id, input_cost_per_1m, output_cost_per_1m FROM model_pricing WHERE provider = 'openai'"
+  ).all<{ model_id: string; input_cost_per_1m: number; output_cost_per_1m: number }>();
+  const pricingMap = new Map<string, { in: number; out: number }>();
+  for (const row of pricingRows.results) {
+    pricingMap.set(row.model_id, { in: row.input_cost_per_1m, out: row.output_cost_per_1m });
+  }
+
   for (const chunk of body.data) {
     totalRequests += chunk.n_requests;
     totalInput += chunk.n_context_tokens_total;
     totalOutput += chunk.n_generated_tokens_total;
-  }
 
-  // NOTE: estimatedCost here is a coarse proxy until per-model breakdown
-  // is fetched separately. The real adapter fetches model-level granularity.
-  // This keeps us within OpenAI's TPS limits while we iterate.
-  const avgInPerM = 2.5;
-  const avgOutPerM = 10.0;
-  const mIn = 1_000_000;
-  estimatedCost = (totalInput / mIn * avgInPerM) + (totalOutput / mIn * avgOutPerM);
+    // Per-model cost using D1 pricing, with fine-tune base-model fallback
+    const resolved = resolveModelId(chunk.model);
+    const price = pricingMap.get(resolved) ?? pricingMap.get(chunk.model);
+    const m = 1_000_000;
+    if (price) {
+      estimatedCost += (chunk.n_context_tokens_total / m * price.in)
+                     + (chunk.n_generated_tokens_total / m * price.out);
+    } else {
+      console.warn(`unmapped_model: openai/${chunk.model}`);
+    }
+  }
 
   return {
     rawPayload: JSON.stringify(body),
