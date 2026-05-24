@@ -1,0 +1,419 @@
+<!-- ═══════════════════════════════════════════════════════════════════
+     QUOTA WATCHER DASHBOARD
+     Single-file SPA — fetches from the Cloudflare Worker at
+     https://quota-watcher.omisrani19.workers.dev
+     ═══════════════════════════════════════════════════════════════════ -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quota Watcher</title>
+<style>
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --border:   #30363d;
+    --text:     #e6edf3;
+    --muted:    #8b949e;
+    --accent:   #58a6ff;
+    --green:    #3fb950;
+    --yellow:   #d29922;
+    --orange:   #db6d28;
+    --red:      #f85149;
+    --purple:   #a371f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* ── Layout ── */
+  .app { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+
+  /* ── Header ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+    margin-bottom: 28px;
+  }
+  header h1 { font-size: 22px; font-weight: 700; color: var(--accent); }
+  header .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+  /* ── Status pill ── */
+  .status-row {
+    display: flex; align-items: center; gap: 10px;
+    margin: 12px 0 20px;
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 20px;
+    font-size: 12px; font-weight: 600;
+    border: 1px solid;
+  }
+  .pill-ok   { background: rgba(63,185,80,.12); border-color: var(--green);  color: var(--green);  }
+  .pill-err  { background: rgba(248,81,73,.12);  border-color: var(--red);    color: var(--red);    }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .dot-green { background: var(--green);  animation: pulse 2s infinite; }
+  .dot-red   { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
+
+  /* ── Connect form ── */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .section h2 { font-size: 15px; font-weight: 600; margin-bottom: 14px; color: var(--text); }
+
+  .form-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+
+  input[type=text], input[type=number] {
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px;
+    padding: 7px 10px; font-size: 13px; width: 100%;
+    outline: none; transition: border .15s;
+  }
+  input:focus { border-color: var(--accent); }
+
+  button {
+    background: var(--accent); color: #000;
+    border: none; border-radius: 6px;
+    padding: 7px 16px; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: opacity .15s;
+  }
+  button:hover { opacity: .85; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.secondary { background: var(--border); color: var(--text); }
+
+  /* ── Provider grid ── */
+  .provider-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 12px; }
+  .provider-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    position: relative;
+  }
+  .provider-card h3 { font-size: 15px; font-weight: 600; }
+  .provider-card .meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .provider-card button.del { position: absolute; top: 12px; right: 12px; background: none; border: 1px solid var(--border); color: var(--muted); padding: 3px 8px; font-size: 11px; }
+  .provider-card button.del:hover { border-color: var(--red); color: var(--red); }
+
+  .budget-bar { margin-top: 12px; }
+  .bar-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+  .bar-track { background: var(--border); border-radius: 4px; height: 8px; overflow: hidden; }
+  .bar-fill  { height: 100%; border-radius: 4px; transition: width .3s; }
+
+  .pct { font-size: 20px; font-weight: 700; margin-top: 6px; }
+  .pct-ok   { color: var(--green);  }
+  .pct-warn { color: var(--yellow); }
+  .pct-alert{ color: var(--red);    }
+
+  .today-cost { margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .today-cost span { color: var(--text); font-weight: 600; }
+
+  /* ── Alerts ── */
+  .alert-list { display: flex; flex-direction: column; gap: 8px; }
+  .alert-item {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .alert-item.warn  { border-left: 3px solid var(--yellow); }
+  .alert-item.alert { border-left: 3px solid var(--red);    }
+  .alert-item.ok    { border-left: 3px solid var(--green);  }
+  .alert-name  { font-weight: 600; font-size: 13px; }
+  .alert-body  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .alert-pct   { font-size: 16px; font-weight: 700; white-space: nowrap; }
+
+  /* ── Loaders ── */
+  .spinner {
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; width: 16px; height: 16px;
+    animation: spin .7s linear infinite; display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #msg {
+    padding: 10px 14px; border-radius: 6px; font-size: 13px;
+    margin-top: 10px; display: none;
+  }
+  #msg.error   { background: rgba(248,81,73,.12);  border: 1px solid var(--red);    color: var(--red);    }
+  #msg.success { background: rgba(63,185,80,.12);  border: 1px solid var(--green);  color: var(--green);  }
+  #msg.info    { background: rgba(88,166,255,.12); border: 1px solid var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <h1>⚡ Quota Watcher</h1>
+    <div class="sub">Cloudflare Worker + D1 · polls LLM provider usage every 10 min</div>
+  </header>
+
+  <!-- Health check -->
+  <div class="status-row">
+    <div id="healthPill" class="pill">
+      <span class="spinner" id="healthSpinner"></span>
+      <span id="healthTxt">checking…</span>
+    </div>
+    <span id="tsLabel" style="font-size:11px;color:var(--muted)"></span>
+  </div>
+
+  <!-- Connect provider -->
+  <div class="section">
+    <h2>Connect Provider</h2>
+    <div class="form-row">
+      <div style="flex:1;min-width:180px">
+        <label>Provider</label>
+        <select id="pProvider" onchange="applyDefaultCap()">
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="groq">Groq</option>
+          <option value="perplexity">Perplexity</option>
+          <option value="elevenlabs">ElevenLabs</option>
+        </select>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <label>Display name</label>
+        <input type="text" id="pName" placeholder="My OpenAI account">
+      </div>
+    </div>
+    <div class="form-row">
+      <div style="flex:1;min-width:180px">
+        <label>API key</label>
+        <input type="text" id="pKey" placeholder="sk-…">
+      </div>
+      <div style="flex:1;min-width:140px">
+        <label>Budget cap ($)</label>
+        <input type="number" id="pCap" value="50" min="0" step="1">
+      </div>
+      <div style="flex:1;min-width:120px">
+        <label>Alert threshold %</label>
+        <input type="number" id="pAlert" value="80" min="1" max="99">
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button id="pConnectBtn" onclick="connect()">Connect</button>
+      </div>
+    </div>
+    <div id="msg"></div>
+  </div>
+
+  <!-- Providers -->
+  <div class="section">
+    <h2>Providers · <span id="provCount">–</span></h2>
+    <div class="provider-grid" id="providers">Loading…</div>
+  </div>
+
+  <!-- Alerts -->
+  <div class="section" id="alertsSec" style="display:none">
+    <h2>⚠️ Alerts</h2>
+    <div class="alert-list" id="alerts"></div>
+  </div>
+
+  <!-- Today -->
+  <div class="section" id="todaySec" style="display:none">
+    <h2>📊 Today's Usage</h2>
+    <div id="todayList"></div>
+  </div>
+
+</div>
+
+<script>
+/* ── Config ─────────────────────────────────────────────── */
+const API = "https://quota-watcher.omisrani19.workers.dev";
+const AUTH = localStorage.getItem("qw_auth");
+
+/* ── Auth gate ─────────────────────────────────────────── */
+if (AUTH) fetch(API + "/api/health", { headers: { Authorization: AUTH } });
+
+function getAuth() {
+  let a = AUTH;
+  if (!a) {
+    a = `Bearer ${Date.now()}`; // placeholder; connect() stores real one
+    // In a real app the user would authenticate; for demo we store a shared token
+    localStorage.setItem("qw_auth", a);
+  }
+  return a;
+}
+
+function setMsg(el, html, cls, ms = 4000) {
+  el.innerHTML = html;
+  el.className = cls;
+  el.style.display = "block";
+  if (ms) setTimeout(() => el.style.display = "none", ms);
+}
+
+/* ── Health ─────────────────────────────────────────────── */
+async function refreshHealth() {
+  const pill   = document.getElementById("healthPill");
+  const txt    = document.getElementById("healthTxt");
+  const sp     = document.getElementById("healthSpinner");
+  const tsLbl  = document.getElementById("tsLabel");
+  try {
+    const r = await fetch(API + "/api/health", { signal: AbortSignal.timeout(8000) });
+    const d = await r.json();
+    if (d.status === "healthy") {
+      pill.className = "pill pill-ok";
+      txt.textContent = "healthy · " + d.env;
+      sp.style.display = "none";
+      const age = Math.floor((Date.now() / 1000) - d.ts);
+      tsLbl.textContent = "age " + age + "s";
+    } else {
+      throwObject(d);
+    }
+  } catch(e) {
+    pill.className = "pill pill-err";
+    txt.textContent = "unreachable";
+    sp.style.display = "none";
+    tsLbl.textContent = "";
+  }
+}
+
+/* ── Rate-limit helper ─────────────────────────────────── */
+let _pending = null;
+function rate(fn) {
+  if (_pending) return _pending;
+  _pending = fn().finally(() => { _pending = null; });
+  return _pending;
+}
+
+/* ── Connect ───────────────────────────────────────────── */
+function applyDefaultCap() {
+  const caps = { openai: "50", anthropic: "50", groq: "50", perplexity: "30", elevenlabs: "30" };
+  document.getElementById("pCap").value = caps[document.getElementById("pProvider").value] || "50";
+}
+
+async function connect() {
+  const btn = document.getElementById("pConnectBtn");
+  const msg = document.getElementById("msg");
+  const body = {
+    provider_name: document.getElementById("pProvider").value,
+    api_key:       document.getElementById("pKey").value.trim(),
+    name:          document.getElementById("pName").value.trim() || undefined,
+    budget_cap:    parseFloat(document.getElementById("pCap").value) || 0,
+    alert_threshold_percent: parseInt(document.getElementById("pAlert").value) || 80,
+  };
+  if (!body.provider_name || !body.api_key) {
+    setMsg(msg, "Provider name and API key are required.", "error");
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "…";
+  try {
+    const r = await fetch(API + "/api/providers/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": getAuth() },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) throwObject(d);
+    localStorage.setItem("qw_auth", d.id || "Bearer " + Date.now());
+    if (d.id) localStorage.setItem("qw_org", d.id);
+    setMsg(msg, "Connected! Provider ID: <code>" + (d.id || "—") + "</code>", "success", 6000);
+    document.getElementById("pKey").value = "";
+    refreshProviders();
+  } catch(e) {
+    setMsg(msg, "Error: " + (e.message || e), "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Connect";
+  }
+}
+
+/* ── Providers ─────────────────────────────────────────── */
+async function refreshProviders() {
+  const grid = document.getElementById("providers");
+  const count = document.getElementById("provCount");
+  try {
+    const r = await fetch(API + "/api/providers", {
+      headers: { Authorization: getAuth() },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) { grid.innerHTML = `<span style="color:var(--red)">${r.status} — auth or server error</span>`; return; }
+    const rows = await r.json();
+    count.textContent = rows.length;
+    if (!rows.length) { grid.innerHTML = "<p style='color:var(--muted)'>No providers connected yet.</p>"; return; }
+
+    grid.innerHTML = rows.map(p => {
+      const cap    = p.budget_cap || 0;
+      const used   = p.total_cost || 0;
+      const pct    = cap > 0 ? Math.min(100, (used / cap) * 100) : 0;
+      const pctCls = pct >= 90 ? "pct-alert" : pct >= 60 ? "pct-warn" : "pct-ok";
+      const barCls = pct >= 90 ? "bg-red"   : pct >= 60 ? "bg-yellow" : "bg-green";
+      const barColors = { bg_red:"var(--red)", bg_yellow:"var(--yellow)", bg_green:"var(--green)" };
+      const lastPolled = p.last_polled_at ? new Date(Number(p.last_polled_at) * 1000).toLocaleString() : "never";
+      const icon = { openai: "🟢", anthropic: "🟣", groq: "🟡", perplexity: "🔵", elevenlabs: "🔴" }[p.provider_name] || "⚙️";
+      return `
+        <div class="provider-card" id="prov-${p.id}">
+          <button class="del" onclick="deleteProv('${p.id}')">remove</button>
+          <h3>${icon} ${p.name || p.provider_name}</h3>
+          <div class="meta">${p.provider_name} · polled: ${lastPolled}</div>
+          <div class="budget-bar">
+            <div class="bar-label"><span>$${used.toFixed(2)} / $${cap.toFixed(2)}</span><span>${pct.toFixed(1)}%</span></div>
+            <div class="bar-track"><div class="bar-fill"
+              style="width:${pct}%;background:${barColors[barCls]}"></div></div>
+            <div class="pct ${pctCls}">${pct.toFixed(1)}%</div>
+            <div class="today-cost" id="today-${p.id}">Today: loading…</div>
+          </div>
+        </div>`;
+    }).join("");
+
+    // Fetch today for each provider
+    (rows || []).forEach(p => loadToday(p.id));
+  } catch(e) {
+    grid.innerHTML = "<span style='color:var(--red)'>List error: " + e.message + "</span>";
+  }
+}
+
+async function loadToday(pid) {
+  const el = document.getElementById("today-" + pid);
+  if (!el) return;
+  try {
+    const r = await fetch(API + "/api/providers/" + pid + "/today", {
+      headers: { Authorization: getAuth() },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!r.ok) { el.textContent = "Today: unavailable"; return; }
+    const d = await r.json();
+    if (!d) { el.textContent = "Today: no data yet"; return; }
+    el.innerHTML = `Today: <span>$${(d.derived_cost || 0).toFixed(4)}</span> · ${d.totalRequests || "?"} req · ${d.totalInputTokens || "?"} in / ${d.totalOutputTokens || "?"} out tokens`;
+  } catch(e) {
+    el.textContent = "Today: error";
+  }
+}
+
+async function deleteProv(pid) {
+  if (!confirm("Remove this provider?")) return;
+  try {
+    const r = await fetch(API + "/api/providers/" + pid, {
+      method: "DELETE",
+      headers: { Authorization: getAuth() },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!r.ok) throw new Error(r.status);
+    refreshProviders();
+  } catch(e) {
+    alert("Delete failed: " + e.message);
+  }
+}
+
+/* ── Error helper ───────────────────────────────────────── */
+function throwObject(d) { throw new Error(JSON.stringify(d)); }
+
+/* ── Init ───────────────────────────────────────────────── */
+refreshHealth();
+setInterval(refreshHealth, 60000);
+refreshProviders();
+setInterval(refreshProviders, 30000);
+</script>
+</body>
+</html>
