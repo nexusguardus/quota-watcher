@@ -3,6 +3,16 @@
 // ═══════════════════════════════════════════════════════
 
 // ─── Crypto Helpers (AES-256-GCM via Web Crypto API) ───
+// ─── CORS ──────────────────────────────────────────────
+
+function corsHeaders(allowOrigin = "*") {
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+}
+
 
 function hexToBytes(hex) {
   const bytes = new Uint8Array(hex.length / 2);
@@ -223,8 +233,13 @@ async function handleFetch(request, env) {
       env: env.ENVIRONMENT,
       ts: Math.floor(Date.now() / 1000),
     }), {
-      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...corsHeaders() },
     });
+  }
+
+  // CORS preflight
+  if (url.pathname.startsWith("/api/") && request.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders() });
   }
 
   const authHeader = request.headers.get("Authorization");
@@ -250,10 +265,10 @@ async function handleFetch(request, env) {
         name ?? `${provider_name} key`, budget_cap ?? 0, alert_threshold_percent ?? 80).run();
 
       return new Response(JSON.stringify({ id: providerId, status: "connected" }), {
-        headers: { "Content-Type": "application/json" }, status: 201,
+        headers: { "Content-Type": "application/json", ...corsHeaders() }, status: 201,
       });
     } catch (err) {
-      return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders() });
     }
   }
 
@@ -266,7 +281,7 @@ async function handleFetch(request, env) {
     `).all();
 
     return new Response(JSON.stringify(results), {
-      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...corsHeaders() },
     });
   }
 
@@ -281,7 +296,7 @@ async function handleFetch(request, env) {
     `).bind(providerId, new Date().toISOString().slice(0, 10)).all();
 
     return new Response(JSON.stringify(results[0] ?? null), {
-      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...corsHeaders() },
     });
   }
 
