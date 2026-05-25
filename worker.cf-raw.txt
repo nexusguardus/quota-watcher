@@ -1,16 +1,9 @@
+--2f691d274119bacf03dcbb06804356a438eccfe1ca31f668c444b48c2838
+Content-Disposition: form-data; name="worker.ts"
+
 // ═══════════════════════════════════════════════════════
 //  QUOTA WATCHER — Cloudflare Worker + D1 + Cron
 // ═══════════════════════════════════════════════════════
-
-// ─── CORS ──────────────────────────────────────────────
-
-function corsHeaders(allowOrigin = "*") {
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  };
-}
 
 // ─── Crypto Helpers (AES-256-GCM via Web Crypto API) ───
 
@@ -50,20 +43,6 @@ async function decryptCredential(ciphertextHex, ivHex, secretHex) {
   return new TextDecoder().decode(decrypted);
 }
 
-// ─── Subscription Helpers ──────────────────────────────
-
-async function getPlanLimit(env, orgId) {
-  const { results } = await env.DB.prepare(
-    "SELECT plan_name FROM subscriptions WHERE user_id = ?"
-  ).bind(orgId).all();
-  
-  const plan = results[0]?.plan_name || "free";
-  return { 
-    plan, 
-    limit: plan === "free" ? 3 : 100 
-  };
-}
-
 // ─── Model Resolution ───
 
 function resolveModelId(modelId) {
@@ -76,7 +55,7 @@ function resolveModelId(modelId) {
 
 // ─── OpenAI Polling Adapter ───
 
-async function pollOpenAI(apiKey, dateISO, env) {
+async function pollOpenAI(apiKey, dateISO) {
   const t0 = Date.now();
   const res = await fetch(`https://api.openai.com/v1/usage?date=${dateISO}`, {
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -180,7 +159,7 @@ async function handleScheduled(env) {
 
       let pollResult;
       if (p.provider_name === "openai") {
-        pollResult = await pollOpenAI(apiKey, today, env);
+        pollResult = await pollOpenAI(apiKey, today);
       } else {
         console.log(`[${p.id}] provider ${p.provider_name} not yet implemented`);
         continue;
@@ -218,8 +197,8 @@ async function handleScheduled(env) {
 
   if (snapshotInserts.length > 0) {
     const rows = snapshotInserts.map(s =>
-      `('${s.id}','${s.org_id}','${s.provider_id}','${s.snapshot_date}','${s.raw_payload.replace(/'/g, \"''\")}',${s.derivedCost})`
-    ).join(\",\");
+      `('${s.id}','${s.org_id}','${s.provider_id}','${s.snapshot_date}','${s.raw_payload.replace(/'/g, "''")}',${s.derivedCost})`
+    ).join(",");
     await env.DB.prepare(`
       INSERT INTO usage_snapshots (id, org_id, provider_id, snapshot_date, raw_payload, derived_cost)
       VALUES ${rows}
@@ -247,107 +226,19 @@ async function handleFetch(request, env) {
       env: env.ENVIRONMENT,
       ts: Math.floor(Date.now() / 1000),
     }), {
-      headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...corsHeaders() },
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
     });
-  }
-
-  // CORS preflight
-  if (url.pathname.startsWith("/api/") && request.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders() });
   }
 
   const authHeader = request.headers.get("Authorization");
 
-  // 1. STRIPE WEBHOOK
-  if (url.pathname === "/api/webhooks/stripe" && request.method === "POST") {
-    const payload = await request.text();
-    const sig = request.headers.get("Stripe-Signature");
-    if (!sig) return new Response("Missing signature", { status: 400 });
-
-    try {
-      const event = JSON.parse(payload);
-      if (event.type === "checkout.session.completed") {
-        const session = event.data.object;
-        const userId = session.client_reference_id;
-        const plan = session.metadata.plan || "pro";
-        
-        await env.DB.prepare(`
-          INSERT INTO subscriptions (user_id, stripe_customer_id, plan_name, status, created_at)
-          VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT(user_id) DO UPDATE SET 
-            plan_name = excluded.plan_name, 
-            status = 'active'
-        `).bind(userId, session.customer, plan, "active", Math.floor(Date.now()/1000)).run();
-      }
-      return new Response("ok", { status: 200 });
-    } catch (e) {
-      return new Response(e.message, { status: 400 });
-    }
-  }
-
-  // 2. SUBSCRIPTION CHECKOUT
-  if (url.pathname === "/api/subscription/checkout" && request.method === "POST") {
-    if (!authHeader) return new Response(JSON.stringify({ error: "Missing auth" }), { status: 401 });
-    const body = await request.json();
-    const plan = body.plan || "pro";
-    const orgId = "demo-org";
-
-    const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${env.STRIPE_SECRET_KEY}`,
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: new URLSearchParams({
-        "payment_method_types[]": "card",
-        "line_items[0][price]": plan === "pro" ? "price_pro_id" : "price_team_id",
-        "line_items[0][quantity]": "1",
-        "mode": "subscription",
-        "success_url": "https://quota-watcher.omisrani19.workers.dev/dashboard",
-        "cancel_url": "https://quota-watcher.omisrani19.workers.dev/dashboard",
-        "client_reference_id": orgId,
-        "metadata[plan]": plan
-      })
-    });
-
-    const stripeData = await stripeResponse.json();
-    return new Response(JSON.stringify({ url: stripeData.url }), {
-      headers: { "Content-Type": "application/json", ...corsHeaders() }
-    });
-  }
-
-  // 3. SUBSCRIPTION STATUS
-  if (url.pathname === "/api/subscription" && request.method === "GET") {
-    if (!authHeader) return new Response(JSON.stringify({ error: "Missing auth" }), { status: 401 });
-    const { results } = await env.DB.prepare(`SELECT * FROM subscriptions WHERE user_id = ?`).bind("demo-org").all();
-    const sub = results[0] || { plan_name: "free", status: "inactive" };
-    return new Response(JSON.stringify(sub), {
-      headers: { "Content-Type": "application/json", ...corsHeaders() }
-    });
-  }
-
-  // 4. PROVIDER CONNECT (with Limit Gate)
   if (url.pathname === "/api/providers/connect" && request.method === "POST") {
-    if (!authHeader) return new Response(JSON.stringify({ error: \"Missing auth\" }), { status: 401 });
-
-    const planInfo = await getPlanLimit(env, "demo-org");
-    const { results: current } = await env.DB.prepare(
-      "SELECT id FROM providers WHERE org_id = 'demo-org'"
-    ).all();
-
-    if (current.length >= planInfo.limit) {
-      return new Response(JSON.stringify({ 
-        error: \"Plan limit reached\", 
-        limit: planInfo.limit, 
-        upgrade_url: \"/api/subscription/checkout\" 
-      }), { status: 403, headers: corsHeaders() });
-    }
-
+    if (!authHeader) return new Response(JSON.stringify({ error: "Missing auth" }), { status: 401 });
     const body = await request.json();
     const { provider_name, api_key, name, budget_cap, alert_threshold_percent } = body;
 
     if (!provider_name || !api_key) {
-      return new Response(JSON.stringify({ error: \"provider_name and api_key required\" }), { status: 400, headers: corsHeaders() });
+      return new Response(JSON.stringify({ error: "provider_name and api_key required" }), { status: 400 });
     }
 
     try {
@@ -357,43 +248,34 @@ async function handleFetch(request, env) {
         INSERT INTO providers
           (id, org_id, user_id, provider_name, encrypted_credentials, iv, name, budget_cap, alert_threshold_percent)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(providerId, \"demo-org\", \"demo-user\", provider_name,
+      `).bind(providerId, "demo-org", "demo-user", provider_name,
         enc.ciphertext, enc.iv,
         name ?? `${provider_name} key`, budget_cap ?? 0, alert_threshold_percent ?? 80).run();
 
-      return new Response(JSON.stringify({ id: providerId, status: \"connected\" }), {
-        headers: { \"Content-Type\": \"application/json\", ...corsHeaders() }, status: 201,
+      return new Response(JSON.stringify({ id: providerId, status: "connected" }), {
+        headers: { "Content-Type": "application/json" }, status: 201,
       });
     } catch (err) {
-      return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders() });
+      return new Response(JSON.stringify({ error: err.message }), { status: 500 });
     }
   }
 
-  // 5. LIST PROVIDERS (with plan info)
-  if (url.pathname === \"/api/providers\" && request.method === \"GET\") {
-    if (!authHeader) return new Response(JSON.stringify({ error: \"Missing auth\" }), { status: 401 });
-    
-    const { results: provs } = await env.DB.prepare(`
+  if (url.pathname === "/api/providers" && request.method === "GET") {
+    if (!authHeader) return new Response(JSON.stringify({ error: "Missing auth" }), { status: 401 });
+    const { results } = await env.DB.prepare(`
       SELECT id, provider_name, name, budget_cap, alert_threshold_percent,
              last_polled_at, last_poll_error, enabled, created_at
       FROM providers WHERE org_id = 'demo-org'
     `).all();
 
-    const { results: subs } = await env.DB.prepare(`SELECT plan_name FROM subscriptions WHERE user_id = 'demo-org'`).all();
-    const plan = subs[0]?.plan_name || \"free\";
-
-    return new Response(JSON.stringify({
-      providers: provs,
-      plan: plan,
-      limit: plan === \"free\" ? 3 : 100
-    }), {
-      headers: { \"Content-Type\": \"application/json\", \"Cache-Control\": \"no-store\", ...corsHeaders() },
+    return new Response(JSON.stringify(results), {
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
     });
   }
 
-  if (url.pathname.startsWith(\"/api/providers/\") && url.pathname.endsWith(\"/today\") && request.method === \"GET\") {
-    if (!authHeader) return new Response(JSON.stringify({ error: \"Missing auth\" }), { status: 401 });
-    const providerId = url.pathname.split(\"/\")[3];
+  if (url.pathname.startsWith("/api/providers/") && url.pathname.endsWith("/today") && request.method === "GET") {
+    if (!authHeader) return new Response(JSON.stringify({ error: "Missing auth" }), { status: 401 });
+    const providerId = url.pathname.split("/")[3];
     const { results } = await env.DB.prepare(`
       SELECT derived_cost, raw_payload, fetched_at, poll_ms
       FROM usage_snapshots
@@ -402,11 +284,11 @@ async function handleFetch(request, env) {
     `).bind(providerId, new Date().toISOString().slice(0, 10)).all();
 
     return new Response(JSON.stringify(results[0] ?? null), {
-      headers: { \"Content-Type\": \"application/json\", \"Cache-Control\": \"no-store\", ...corsHeaders() },
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
     });
   }
 
-  return new Response(\"Quota Watcher — /api/health\", { status: 404 });
+  return new Response("Quota Watcher — /api/health", { status: 404 });
 }
 
 export default {
@@ -418,3 +300,5 @@ export default {
     ctx.waitUntil(handleScheduled(env));
   },
 };
+
+--2f691d274119bacf03dcbb06804356a438eccfe1ca31f668c444b48c2838--

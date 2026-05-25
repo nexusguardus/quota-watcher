@@ -1,6 +1,6 @@
 <!-- ═══════════════════════════════════════════════════════════════════
-     QUOTA WATCHER DASHBOARD
-     Single-file SPA — fetches from the Cloudflare Worker at
+     QUOTA WATCHER DASHBOARD — SaaS Edition
+     Fetches from the Cloudflare Worker at
      https://quota-watcher.omisrani19.workers.dev
      ═══════════════════════════════════════════════════════════════════ -->
 <!DOCTYPE html>
@@ -31,9 +31,22 @@
     font-size: 14px;
     line-height: 1.6;
   }
-
-  /* ── Layout ── */
   .app { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+
+  /* ── Top Nav / Plan Bar ── */
+  .plan-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 20px; margin-bottom: 20px;
+  }
+  .plan-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; border-radius: 20px;
+    font-size: 12px; font-weight: 700; border: 1px solid;
+  }
+  .plan-free  { background: rgba(88,166,255,.12); border-color: var(--accent); color: var(--accent); }
+  .plan-pro   { background: rgba(163,113,247,.12); border-color: var(--purple); color: var(--purple); }
+  .plan-muted { color: var(--muted); font-size: 12px; }
 
   /* ── Header ── */
   header {
@@ -62,7 +75,7 @@
   .dot-red   { background: var(--red); }
   @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
 
-  /* ── Connect form ── */
+  /* ── Sections ── */
   .section {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -74,14 +87,14 @@
 
   .form-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
   label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-
-  input[type=text], input[type=number] {
+  select, input[type=text], input[type=number] {
     background: var(--bg); border: 1px solid var(--border);
     color: var(--text); border-radius: 6px;
     padding: 7px 10px; font-size: 13px; width: 100%;
     outline: none; transition: border .15s;
   }
-  input:focus { border-color: var(--accent); }
+  select { cursor: pointer; }
+  input:focus, select:focus { border-color: var(--accent); }
 
   button {
     background: var(--accent); color: #000;
@@ -92,6 +105,22 @@
   button:hover { opacity: .85; }
   button:disabled { opacity: .45; cursor: default; }
   button.secondary { background: var(--border); color: var(--text); }
+  button.danger { background: var(--red); color: #fff; }
+  button.success { background: var(--green); color: #000; }
+
+  /* ── Plan cards ── */
+  .plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+  .plan-card {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; text-align: center;
+  }
+  .plan-card.featured { border-color: var(--purple); }
+  .plan-card h3 { font-size: 16px; font-weight: 700; }
+  .plan-card .price { font-size: 28px; font-weight: 800; color: var(--text); margin: 8px 0; }
+  .plan-card .price span { font-size: 14px; color: var(--muted); }
+  .plan-card ul { list-style: none; font-size: 13px; color: var(--muted); margin: 12px 0; }
+  .plan-card ul li { padding: 4px 0; }
+  .plan-card ul li::before { content: "✓ "; color: var(--green); font-weight: 700; }
 
   /* ── Provider grid ── */
   .provider-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 12px; }
@@ -134,7 +163,22 @@
   .alert-body  { font-size: 12px; color: var(--muted); margin-top: 2px; }
   .alert-pct   { font-size: 16px; font-weight: 700; white-space: nowrap; }
 
-  /* ── Loaders ── */
+  /* ── Modal ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.7); z-index: 100;
+    justify-content: center; align-items: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; max-width: 440px; width: 90%;
+    padding: 32px; text-align: center;
+  }
+  .modal h2 { font-size: 20px; margin-bottom: 12px; }
+  .modal p { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+
+  /* ── Misc ── */
   .spinner {
     border: 2px solid var(--border); border-top-color: var(--accent);
     border-radius: 50%; width: 16px; height: 16px;
@@ -149,97 +193,171 @@
   #msg.error   { background: rgba(248,81,73,.12);  border: 1px solid var(--red);    color: var(--red);    }
   #msg.success { background: rgba(63,185,80,.12);  border: 1px solid var(--green);  color: var(--green);  }
   #msg.info    { background: rgba(88,166,255,.12); border: 1px solid var(--accent); color: var(--accent); }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab {
+    padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 600;
+    cursor: pointer; color: var(--muted); background: transparent; border: none;
+  }
+  .tab.active { background: var(--border); color: var(--text); }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  @media (max-width: 640px) {
+    .plan-grid, .provider-grid { grid-template-columns: 1fr; }
+    .plan-bar { flex-direction: column; gap: 10px; }
+  }
 </style>
 </head>
 <body>
+
 <div class="app">
+  <!-- ═══ Plan Bar ═══ -->
+  <div class="plan-bar">
+    <div>
+      <span class="plan-badge" id="planBadge">⚡ Free</span>
+      <span class="plan-muted" id="planMeta" style="margin-left:8px;"></span>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button id="billingBtn" class="secondary" onclick="showBilling()">⚙️ Billing</button>
+    </div>
+  </div>
 
   <header>
     <h1>⚡ Quota Watcher</h1>
     <div class="sub">Cloudflare Worker + D1 · polls LLM provider usage every 10 min</div>
   </header>
 
-  <!-- Health check -->
-  <div class="status-row">
-    <div id="healthPill" class="pill">
-      <span class="spinner" id="healthSpinner"></span>
-      <span id="healthTxt">checking…</span>
+  <!-- ═══ Tabs ═══ -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('monitor')">📊 Monitor</button>
+    <button class="tab" onclick="switchTab('billing')">💰 Billing</button>
+  </div>
+
+  <!-- ═══ Monitoring Tab ═══ -->
+  <div class="tab-pane active" id="tab-monitor">
+    <div class="status-row">
+      <div id="healthPill" class="pill">
+        <span class="spinner" id="healthSpinner"></span>
+        <span id="healthTxt">checking…</span>
+      </div>
+      <span id="tsLabel" style="font-size:11px;color:var(--muted)"></span>
     </div>
-    <span id="tsLabel" style="font-size:11px;color:var(--muted)"></span>
+
+    <div class="section">
+      <h2>Connect Provider <span id="provLimit" style="font-size:12px;color:var(--muted);font-weight:400"></span></h2>
+      <div class="form-row">
+        <div style="flex:1;min-width:180px">
+          <label>Provider</label>
+          <select id="pProvider" onchange="applyDefaultCap()">
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="groq">Groq</option>
+            <option value="perplexity">Perplexity</option>
+            <option value="elevenlabs">ElevenLabs</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:180px">
+          <label>Display name</label>
+          <input type="text" id="pName" placeholder="My OpenAI account">
+        </div>
+      </div>
+      <div class="form-row">
+        <div style="flex:1;min-width:180px">
+          <label>API key</label>
+          <input type="text" id="pKey" placeholder="sk-…">
+        </div>
+        <div style="flex:1;min-width:140px">
+          <label>Budget cap ($)</label>
+          <input type="number" id="pCap" value="50" min="0" step="1">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label>Alert threshold %</label>
+          <input type="number" id="pAlert" value="80" min="1" max="99">
+        </div>
+        <div style="display:flex;align-items:flex-end">
+          <button id="pConnectBtn" onclick="connect()">Connect</button>
+        </div>
+      </div>
+      <div id="msg"></div>
+    </div>
+
+    <div class="section">
+      <h2>Providers · <span id="provCount">–</span></h2>
+      <div class="provider-grid" id="providers">Loading…</div>
+    </div>
+
+    <div class="section" id="alertsSec" style="display:none">
+      <h2>⚠️ Alerts</h2>
+      <div class="alert-list" id="alerts"></div>
+    </div>
+
+    <div class="section" id="todaySec" style="display:none">
+      <h2>📊 Today's Usage</h2>
+      <div id="todayList"></div>
+    </div>
   </div>
 
-  <!-- Connect provider -->
-  <div class="section">
-    <h2>Connect Provider</h2>
-    <div class="form-row">
-      <div style="flex:1;min-width:180px">
-        <label>Provider</label>
-        <select id="pProvider" onchange="applyDefaultCap()">
-          <option value="openai">OpenAI</option>
-          <option value="anthropic">Anthropic</option>
-          <option value="groq">Groq</option>
-          <option value="perplexity">Perplexity</option>
-          <option value="elevenlabs">ElevenLabs</option>
-        </select>
-      </div>
-      <div style="flex:1;min-width:180px">
-        <label>Display name</label>
-        <input type="text" id="pName" placeholder="My OpenAI account">
+  <!-- ═══ Billing Tab ═══ -->
+  <div class="tab-pane" id="tab-billing">
+    <div class="section">
+      <h2>Choose your plan</h2>
+      <div class="plan-grid">
+        <div class="plan-card">
+          <h3>Free</h3>
+          <div class="price">$0<span>/mo</span></div>
+          <ul>
+            <li>3 providers</li>
+            <li>90-day history</li>
+            <li>Email alerts</li>
+          </ul>
+          <button class="secondary" disabled id="currentFreeBtn">Current plan</button>
+        </div>
+        <div class="plan-card featured">
+          <h3>Pro</h3>
+          <div class="price">$9<span>/mo</span></div>
+          <ul>
+            <li>Unlimited providers</li>
+            <li>1-year history</li>
+            <li>Slack / Discord webhooks</li>
+            <li>Anomaly detection</li>
+          </ul>
+          <button id="upgradeProBtn" onclick="checkout('pro')">Upgrade to Pro</button>
+        </div>
       </div>
     </div>
-    <div class="form-row">
-      <div style="flex:1;min-width:180px">
-        <label>API key</label>
-        <input type="text" id="pKey" placeholder="sk-…">
-      </div>
-      <div style="flex:1;min-width:140px">
-        <label>Budget cap ($)</label>
-        <input type="number" id="pCap" value="50" min="0" step="1">
-      </div>
-      <div style="flex:1;min-width:120px">
-        <label>Alert threshold %</label>
-        <input type="number" id="pAlert" value="80" min="1" max="99">
-      </div>
-      <div style="display:flex;align-items:flex-end">
-        <button id="pConnectBtn" onclick="connect()">Connect</button>
+
+    <div class="section">
+      <h2>Current subscription</h2>
+      <div id="subDetails">
+        <p style="color:var(--muted)">Loading subscription info…</p>
       </div>
     </div>
-    <div id="msg"></div>
   </div>
+</div>
 
-  <!-- Providers -->
-  <div class="section">
-    <h2>Providers · <span id="provCount">–</span></h2>
-    <div class="provider-grid" id="providers">Loading…</div>
+<!-- ═══ Upgrade Modal ═══ -->
+<div class="modal-overlay" id="upgradeModal">
+  <div class="modal">
+    <h2>🚀 Plan limit reached</h2>
+    <p id="modalBody">You've hit the limit for your current plan. Upgrade to Pro for unlimited providers and advanced features.</p>
+    <button onclick="checkout('pro')" style="width:100%;padding:12px;font-size:15px;">Upgrade to Pro — $9/mo</button>
+    <br><br>
+    <button class="secondary" onclick="closeModal()" style="width:100%;">Maybe later</button>
   </div>
-
-  <!-- Alerts -->
-  <div class="section" id="alertsSec" style="display:none">
-    <h2>⚠️ Alerts</h2>
-    <div class="alert-list" id="alerts"></div>
-  </div>
-
-  <!-- Today -->
-  <div class="section" id="todaySec" style="display:none">
-    <h2>📊 Today's Usage</h2>
-    <div id="todayList"></div>
-  </div>
-
 </div>
 
 <script>
-/* ── Config ─────────────────────────────────────────────── */
+/* ── Config ──────────────────────────────────────────── */
 const API = "https://quota-watcher.omisrani19.workers.dev";
-const AUTH = localStorage.getItem("qw_auth");
-
-/* ── Auth gate ─────────────────────────────────────────── */
-if (AUTH) fetch(API + "/api/health", { headers: { Authorization: AUTH } });
+let currentPlan = "free";
+let currentLimit = 3;
+let providerCount = 0;
 
 function getAuth() {
-  let a = AUTH;
+  let a = localStorage.getItem("qw_auth");
   if (!a) {
-    a = `Bearer ${Date.now()}`; // placeholder; connect() stores real one
-    // In a real app the user would authenticate; for demo we store a shared token
+    a = "Bearer " + Date.now();
     localStorage.setItem("qw_auth", a);
   }
   return a;
@@ -252,7 +370,86 @@ function setMsg(el, html, cls, ms = 4000) {
   if (ms) setTimeout(() => el.style.display = "none", ms);
 }
 
-/* ── Health ─────────────────────────────────────────────── */
+/* ── Tabs ──────────────────────────────────────────── */
+function switchTab(name) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+  document.querySelector(`.tab[onclick*='${name}']`).classList.add("active");
+  document.getElementById("tab-" + name).classList.add("active");
+}
+
+function showBilling() { switchTab("billing"); refreshSubscription(); }
+
+/* ── Modal ─────────────────────────────────────────── */
+function openModal(msg) {
+  document.getElementById("modalBody").textContent = msg || "You've hit the limit for your current plan. Upgrade to Pro for unlimited providers.";
+  document.getElementById("upgradeModal").classList.add("open");
+}
+function closeModal() {
+  document.getElementById("upgradeModal").classList.remove("open");
+}
+
+/* ── Subscription ──────────────────────────────────── */
+async function refreshSubscription() {
+  const badge = document.getElementById("planBadge");
+  const meta  = document.getElementById("planMeta");
+  const subD  = document.getElementById("subDetails");
+
+  try {
+    const r = await fetch(API + "/api/subscription", {
+      headers: { Authorization: getAuth() },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    currentPlan = d.plan_name || "free";
+
+    badge.className = "plan-badge plan-" + currentPlan;
+    badge.innerHTML = (currentPlan === "free" ? "⚡ Free" : "🟣 Pro");
+    meta.textContent = currentPlan === "free" ? "3 providers max" : "Unlimited providers";
+
+    subD.innerHTML = currentPlan === "free"
+      ? `<p style="color:var(--muted)">You're on the Free plan. <a href="#" onclick="checkout('pro')" style="color:var(--accent)">Upgrade to Pro</a></p>`
+      : `<p style="color:var(--green)">✅ Pro plan active · Status: ${d.status || "active"}</p>`;
+
+    // Update buttons
+    document.getElementById("currentFreeBtn").disabled = currentPlan !== "free";
+    const upBtn = document.getElementById("upgradeProBtn");
+    upBtn.textContent = currentPlan === "free" ? "Upgrade to Pro" : "Manage subscription";
+    upBtn.className = currentPlan === "free" ? "" : "secondary";
+  } catch(e) {
+    meta.textContent = "offline";
+    subD.innerHTML = `<p style="color:var(--red)">Could not load subscription (${e.message})</p>`;
+  }
+}
+
+async function checkout(plan) {
+  const upBtn = document.getElementById("upgradeProBtn");
+  upBtn.disabled = true;
+  upBtn.textContent = "Redirecting…";
+  closeModal();
+
+  try {
+    const r = await fetch(API + "/api/subscription/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: getAuth() },
+      body: JSON.stringify({ plan }),
+    });
+    const d = await r.json();
+    if (d.url) {
+      window.location.href = d.url;
+    } else {
+      alert("Checkout error: " + JSON.stringify(d));
+    }
+  } catch(e) {
+    alert("Checkout failed: " + e.message);
+  } finally {
+    upBtn.disabled = false;
+    upBtn.textContent = plan === "pro" ? "Upgrade to Pro" : "Upgrade to Team";
+  }
+}
+
+/* ── Health ────────────────────────────────────────── */
 async function refreshHealth() {
   const pill   = document.getElementById("healthPill");
   const txt    = document.getElementById("healthTxt");
@@ -278,7 +475,7 @@ async function refreshHealth() {
   }
 }
 
-/* ── Rate-limit helper ─────────────────────────────────── */
+/* ── Rate-limit helper ─────────────────────────────── */
 let _pending = null;
 function rate(fn) {
   if (_pending) return _pending;
@@ -286,7 +483,7 @@ function rate(fn) {
   return _pending;
 }
 
-/* ── Connect ───────────────────────────────────────────── */
+/* ── Connect ───────────────────────────────────────── */
 function applyDefaultCap() {
   const caps = { openai: "50", anthropic: "50", groq: "50", perplexity: "30", elevenlabs: "30" };
   document.getElementById("pCap").value = caps[document.getElementById("pProvider").value] || "50";
@@ -315,7 +512,16 @@ async function connect() {
       body: JSON.stringify(body),
     });
     const d = await r.json();
-    if (!r.ok) throwObject(d);
+
+    // Handle plan limit error with upgrade modal
+    if (!r.ok) {
+      if (d.error === "Plan limit reached") {
+        openModal(`You have ${providerCount} providers connected, but your ${currentPlan} plan allows only ${d.limit}. Upgrade to add more.`);
+        return;
+      }
+      throwObject(d);
+    }
+
     localStorage.setItem("qw_auth", d.id || "Bearer " + Date.now());
     if (d.id) localStorage.setItem("qw_org", d.id);
     setMsg(msg, "Connected! Provider ID: <code>" + (d.id || "—") + "</code>", "success", 6000);
@@ -329,18 +535,33 @@ async function connect() {
   }
 }
 
-/* ── Providers ─────────────────────────────────────────── */
+/* ── Providers ─────────────────────────────────────── */
 async function refreshProviders() {
   const grid = document.getElementById("providers");
   const count = document.getElementById("provCount");
+  const limit = document.getElementById("provLimit");
   try {
     const r = await fetch(API + "/api/providers", {
       headers: { Authorization: getAuth() },
       signal: AbortSignal.timeout(8000),
     });
     if (!r.ok) { grid.innerHTML = `<span style="color:var(--red)">${r.status} — auth or server error</span>`; return; }
-    const rows = await r.json();
+    const data = await r.json();
+
+    // Handle nested format: { providers: [...], plan: "free", limit: 3 }
+    const rows = data.providers || data;
+    currentPlan = data.plan || "free";
+    currentLimit = data.limit || 3;
+    providerCount = rows.length;
+
     count.textContent = rows.length;
+    limit.textContent = `(${rows.length}/${currentLimit} used)`;
+
+    // Update plan bar
+    const badge = document.getElementById("planBadge");
+    badge.className = "plan-badge plan-" + currentPlan;
+    badge.innerHTML = currentPlan === "free" ? "⚡ Free" : "🟣 Pro";
+
     if (!rows.length) { grid.innerHTML = "<p style='color:var(--muted)'>No providers connected yet.</p>"; return; }
 
     grid.innerHTML = rows.map(p => {
@@ -359,15 +580,13 @@ async function refreshProviders() {
           <div class="meta">${p.provider_name} · polled: ${lastPolled}</div>
           <div class="budget-bar">
             <div class="bar-label"><span>$${used.toFixed(2)} / $${cap.toFixed(2)}</span><span>${pct.toFixed(1)}%</span></div>
-            <div class="bar-track"><div class="bar-fill"
-              style="width:${pct}%;background:${barColors[barCls]}"></div></div>
+            <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${barColors[barCls]}"></div></div>
             <div class="pct ${pctCls}">${pct.toFixed(1)}%</div>
             <div class="today-cost" id="today-${p.id}">Today: loading…</div>
           </div>
         </div>`;
     }).join("");
 
-    // Fetch today for each provider
     (rows || []).forEach(p => loadToday(p.id));
   } catch(e) {
     grid.innerHTML = "<span style='color:var(--red)'>List error: " + e.message + "</span>";
@@ -406,13 +625,14 @@ async function deleteProv(pid) {
   }
 }
 
-/* ── Error helper ───────────────────────────────────────── */
+/* ── Error helper ──────────────────────────────────── */
 function throwObject(d) { throw new Error(JSON.stringify(d)); }
 
-/* ── Init ───────────────────────────────────────────────── */
+/* ── Init ──────────────────────────────────────────── */
 refreshHealth();
-setInterval(refreshHealth, 60000);
+refreshSubscription();
 refreshProviders();
+setInterval(refreshHealth, 60000);
 setInterval(refreshProviders, 30000);
 </script>
 </body>
