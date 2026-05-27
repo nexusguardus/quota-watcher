@@ -1,639 +1,280 @@
-<!-- ═══════════════════════════════════════════════════════════════════
-     QUOTA WATCHER DASHBOARD — SaaS Edition
-     Fetches from the Cloudflare Worker at
-     https://quota-watcher.omisrani19.workers.dev
-     ═══════════════════════════════════════════════════════════════════ -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Quota Watcher</title>
-<style>
-  :root {
-    --bg:       #0d1117;
-    --surface:  #161b22;
-    --border:   #30363d;
-    --text:     #e6edf3;
-    --muted:    #8b949e;
-    --accent:   #58a6ff;
-    --green:    #3fb950;
-    --yellow:   #d29922;
-    --orange:   #db6d28;
-    --red:      #f85149;
-    --purple:   #a371f7;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 14px;
-    line-height: 1.6;
-  }
-  .app { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
-
-  /* ── Top Nav / Plan Bar ── */
-  .plan-bar {
-    display: flex; align-items: center; justify-content: space-between;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; padding: 12px 20px; margin-bottom: 20px;
-  }
-  .plan-badge {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 12px; border-radius: 20px;
-    font-size: 12px; font-weight: 700; border: 1px solid;
-  }
-  .plan-free  { background: rgba(88,166,255,.12); border-color: var(--accent); color: var(--accent); }
-  .plan-pro   { background: rgba(163,113,247,.12); border-color: var(--purple); color: var(--purple); }
-  .plan-muted { color: var(--muted); font-size: 12px; }
-
-  /* ── Header ── */
-  header {
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 20px;
-    margin-bottom: 28px;
-  }
-  header h1 { font-size: 22px; font-weight: 700; color: var(--accent); }
-  header .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
-
-  /* ── Status pill ── */
-  .status-row {
-    display: flex; align-items: center; gap: 10px;
-    margin: 12px 0 20px;
-  }
-  .pill {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 12px; border-radius: 20px;
-    font-size: 12px; font-weight: 600;
-    border: 1px solid;
-  }
-  .pill-ok   { background: rgba(63,185,80,.12); border-color: var(--green);  color: var(--green);  }
-  .pill-err  { background: rgba(248,81,73,.12);  border-color: var(--red);    color: var(--red);    }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  .dot-green { background: var(--green);  animation: pulse 2s infinite; }
-  .dot-red   { background: var(--red); }
-  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.4;} }
-
-  /* ── Sections ── */
-  .section {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 20px;
-    margin-bottom: 20px;
-  }
-  .section h2 { font-size: 15px; font-weight: 600; margin-bottom: 14px; color: var(--text); }
-
-  .form-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-  select, input[type=text], input[type=number] {
-    background: var(--bg); border: 1px solid var(--border);
-    color: var(--text); border-radius: 6px;
-    padding: 7px 10px; font-size: 13px; width: 100%;
-    outline: none; transition: border .15s;
-  }
-  select { cursor: pointer; }
-  input:focus, select:focus { border-color: var(--accent); }
-
-  button {
-    background: var(--accent); color: #000;
-    border: none; border-radius: 6px;
-    padding: 7px 16px; font-size: 13px; font-weight: 600;
-    cursor: pointer; transition: opacity .15s;
-  }
-  button:hover { opacity: .85; }
-  button:disabled { opacity: .45; cursor: default; }
-  button.secondary { background: var(--border); color: var(--text); }
-  button.danger { background: var(--red); color: #fff; }
-  button.success { background: var(--green); color: #000; }
-
-  /* ── Plan cards ── */
-  .plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
-  .plan-card {
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: 10px; padding: 20px; text-align: center;
-  }
-  .plan-card.featured { border-color: var(--purple); }
-  .plan-card h3 { font-size: 16px; font-weight: 700; }
-  .plan-card .price { font-size: 28px; font-weight: 800; color: var(--text); margin: 8px 0; }
-  .plan-card .price span { font-size: 14px; color: var(--muted); }
-  .plan-card ul { list-style: none; font-size: 13px; color: var(--muted); margin: 12px 0; }
-  .plan-card ul li { padding: 4px 0; }
-  .plan-card ul li::before { content: "✓ "; color: var(--green); font-weight: 700; }
-
-  /* ── Provider grid ── */
-  .provider-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 12px; }
-  .provider-card {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 16px;
-    position: relative;
-  }
-  .provider-card h3 { font-size: 15px; font-weight: 600; }
-  .provider-card .meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
-  .provider-card button.del { position: absolute; top: 12px; right: 12px; background: none; border: 1px solid var(--border); color: var(--muted); padding: 3px 8px; font-size: 11px; }
-  .provider-card button.del:hover { border-color: var(--red); color: var(--red); }
-
-  .budget-bar { margin-top: 12px; }
-  .bar-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 5px; }
-  .bar-track { background: var(--border); border-radius: 4px; height: 8px; overflow: hidden; }
-  .bar-fill  { height: 100%; border-radius: 4px; transition: width .3s; }
-
-  .pct { font-size: 20px; font-weight: 700; margin-top: 6px; }
-  .pct-ok   { color: var(--green);  }
-  .pct-warn { color: var(--yellow); }
-  .pct-alert{ color: var(--red);    }
-
-  .today-cost { margin-top: 10px; font-size: 12px; color: var(--muted); }
-  .today-cost span { color: var(--text); font-weight: 600; }
-
-  /* ── Alerts ── */
-  .alert-list { display: flex; flex-direction: column; gap: 8px; }
-  .alert-item {
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 14px;
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  .alert-item.warn  { border-left: 3px solid var(--yellow); }
-  .alert-item.alert { border-left: 3px solid var(--red);    }
-  .alert-item.ok    { border-left: 3px solid var(--green);  }
-  .alert-name  { font-weight: 600; font-size: 13px; }
-  .alert-body  { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  .alert-pct   { font-size: 16px; font-weight: 700; white-space: nowrap; }
-
-  /* ── Modal ── */
-  .modal-overlay {
-    display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,.7); z-index: 100;
-    justify-content: center; align-items: center;
-  }
-  .modal-overlay.open { display: flex; }
-  .modal {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; max-width: 440px; width: 90%;
-    padding: 32px; text-align: center;
-  }
-  .modal h2 { font-size: 20px; margin-bottom: 12px; }
-  .modal p { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
-
-  /* ── Misc ── */
-  .spinner {
-    border: 2px solid var(--border); border-top-color: var(--accent);
-    border-radius: 50%; width: 16px; height: 16px;
-    animation: spin .7s linear infinite; display: inline-block;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  #msg {
-    padding: 10px 14px; border-radius: 6px; font-size: 13px;
-    margin-top: 10px; display: none;
-  }
-  #msg.error   { background: rgba(248,81,73,.12);  border: 1px solid var(--red);    color: var(--red);    }
-  #msg.success { background: rgba(63,185,80,.12);  border: 1px solid var(--green);  color: var(--green);  }
-  #msg.info    { background: rgba(88,166,255,.12); border: 1px solid var(--accent); color: var(--accent); }
-
-  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
-  .tab {
-    padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 600;
-    cursor: pointer; color: var(--muted); background: transparent; border: none;
-  }
-  .tab.active { background: var(--border); color: var(--text); }
-  .tab-pane { display: none; }
-  .tab-pane.active { display: block; }
-
-  @media (max-width: 640px) {
-    .plan-grid, .provider-grid { grid-template-columns: 1fr; }
-    .plan-bar { flex-direction: column; gap: 10px; }
-  }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quota Watcher — Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { background-color: #0a0a0a; color: #e5e5e5; font-family: 'Inter', sans-serif; }
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .accent-gradient { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); }
+        .plan-badge-free { background: #1f2937; color: #9ca3af; border: 1px solid #374151; }
+        .plan-badge-pro { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); color: white; border: none; }
+    </style>
 </head>
-<body>
-
-<div class="app">
-  <!-- ═══ Plan Bar ═══ -->
-  <div class="plan-bar">
-    <div>
-      <span class="plan-badge" id="planBadge">⚡ Free</span>
-      <span class="plan-muted" id="planMeta" style="margin-left:8px;"></span>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button id="billingBtn" class="secondary" onclick="showBilling()">⚙️ Billing</button>
-    </div>
-  </div>
-
-  <header>
-    <h1>⚡ Quota Watcher</h1>
-    <div class="sub">Cloudflare Worker + D1 · polls LLM provider usage every 10 min</div>
-  </header>
-
-  <!-- ═══ Tabs ═══ -->
-  <div class="tabs">
-    <button class="tab active" onclick="switchTab('monitor')">📊 Monitor</button>
-    <button class="tab" onclick="switchTab('billing')">💰 Billing</button>
-  </div>
-
-  <!-- ═══ Monitoring Tab ═══ -->
-  <div class="tab-pane active" id="tab-monitor">
-    <div class="status-row">
-      <div id="healthPill" class="pill">
-        <span class="spinner" id="healthSpinner"></span>
-        <span id="healthTxt">checking…</span>
-      </div>
-      <span id="tsLabel" style="font-size:11px;color:var(--muted)"></span>
-    </div>
-
-    <div class="section">
-      <h2>Connect Provider <span id="provLimit" style="font-size:12px;color:var(--muted);font-weight:400"></span></h2>
-      <div class="form-row">
-        <div style="flex:1;min-width:180px">
-          <label>Provider</label>
-          <select id="pProvider" onchange="applyDefaultCap()">
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="groq">Groq</option>
-            <option value="perplexity">Perplexity</option>
-            <option value="elevenlabs">ElevenLabs</option>
-          </select>
+<body class="min-h-screen">
+    <!-- Navigation -->
+    <nav class="glass sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 accent-gradient rounded-lg flex items-center justify-center">
+                <i class="fa-solid fa-gauge-high text-white text-sm"></i>
+            </div>
+            <h1 class="text-lg font-bold tracking-tight">Quota Watcher</h1>
+            <span id="planBadge" class="plan-badge-free px-2 py-0.5 rounded-full text-xs font-medium uppercase tracking-wider">Free</span>
         </div>
-        <div style="flex:1;min-width:180px">
-          <label>Display name</label>
-          <input type="text" id="pName" placeholder="My OpenAI account">
+        <div class="flex items-center gap-4">
+            <button onclick="showTab('dashboard')" class="text-sm text-gray-400 hover:text-white transition">Dashboard</button>
+            <button onclick="showTab('billing')" class="text-sm text-gray-400 hover:text-white transition">Billing</button>
+            <div id="userOrg" class="text-sm font-medium bg-white/10 px-3 py-1 rounded-md">Loading Org...</div>
         </div>
-      </div>
-      <div class="form-row">
-        <div style="flex:1;min-width:180px">
-          <label>API key</label>
-          <input type="text" id="pKey" placeholder="sk-…">
+    </nav>
+
+    <main class="max-w-6xl mx-auto p-6 space-y-8">
+        <!-- TAB: DASHBOARD -->
+        <div id="tab-dashboard" class="tab-content space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="glass p-6 rounded-2xl space-y-2">
+                    <p class="text-gray-400 text-sm">Total Providers</p>
+                    <h2 id="stat-providers" class="text-3xl font-bold">0</h2>
+                </div>
+                <div class="glass p-6 rounded-2xl space-y-2">
+                    <p class="text-gray-400 text-sm">Global Spending</p>
+                    <h2 id="stat-spending" class="text-3xl font-bold">$0.00</h2>
+                </div>
+                <div class="glass p-6 rounded-2xl space-y-2">
+                    <p class="text-gray-400 text-sm">Alerts Active</p>
+                    <h2 id="stat-alerts" class="text-3xl font-bold">0</h2>
+                </div>
+            </div>
+
+            <div class="glass p-6 rounded-2xl space-y-6">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xl font-semibold">Provider Monitoring</h3>
+                    <button onclick="openModal('add-modal')" class="accent-gradient px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition">
+                        <i class="fa-solid fa-plus mr-2"></i>Add Provider
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="text-gray-500 text-sm border-b border-white/5">
+                                <th class="py-3 px-4 font-medium">Provider</th>
+                                <th class="py-3 px-4 font-medium">Quota Used</th>
+                                <th class="py-3 px-4 font-medium">Today's Spend</th>
+                                <th class="py-3 px-4 font-medium">Efficiency</th>
+                                <th class="py-3 px-4 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="provider-list" class="divide-y divide-white/5">
+                            <!-- Rows injected via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
-        <div style="flex:1;min-width:140px">
-          <label>Budget cap ($)</label>
-          <input type="number" id="pCap" value="50" min="0" step="1">
+
+        <!-- TAB: BILLING -->
+        <div id="tab-billing" class="tab-content hidden space-y-6">
+            <div class="glass p-8 rounded-2xl max-w-2xl mx-auto text-center space-y-6">
+                <h2 class="text-2xl font-bold">Subscription Management</h2>
+                <p class="text-gray-400">Choose a plan that fits your scale. Manage your API quotas and budgets effortlessly.</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+                    <div class="p-6 rounded-xl bg-white/5 border border-white/10 space-y-4">
+                        <h4 class="font-bold text-lg">Free</h4>
+                        <p class="text-3xl font-bold">$0<span class="text-sm text-gray-500 font-normal">/mo</span></p>
+                        <ul class="text-sm text-gray-400 space-y-2">
+                            <li><i class="fa-solid fa-check mr-2 text-green-500"></i> Up to 3 Providers</li>
+                            <li><i class="fa-solid fa-check mr-2 text-green-500"></i> Basic Alerts</li>
+                            <li><i class="fa-solid fa-check mr-2 text-green-500"></i> 30-day History</li>
+                        </ul>
+                        <button onclick="checkout('free')" id="btn-free" class="w-full py-2 rounded-lg bg-gray-700 text-white font-medium opacity-50 cursor-not-allowed">Current Plan</button>
+                    </div>
+                    <div class="p-6 rounded-xl accent-gradient border border-white/20 space-y-4">
+                        <h4 class="font-bold text-lg">Pro</h4>
+                        <p class="text-3xl font-bold">$9<span class="text-sm text-white/70 font-normal">/mo</span></p>
+                        <ul class="text-sm text-white/80 space-y-2">
+                            <li><i class="fa-solid fa-check mr-2"></i> Unlimited Providers</li>
+                            <li><i class="fa-solid fa-check mr-2"></i> Advanced Alerts</li>
+                            <li><i class="fa-solid fa-check mr-2"></i> 1-year History</li>
+                        </ul>
+                        <button onclick="checkout('pro')" id="btn-pro" class="w-full py-2 rounded-lg bg-white text-indigo-600 font-bold hover:bg-gray-100 transition">Upgrade Now</button>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div style="flex:1;min-width:120px">
-          <label>Alert threshold %</label>
-          <input type="number" id="pAlert" value="80" min="1" max="99">
+    </main>
+
+    <!-- MODAL: ADD PROVIDER -->
+    <div id="add-modal" class="fixed inset-0 z-[60] hidden flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div class="glass w-full max-w-md p-6 rounded-2xl space-y-6">
+            <div class="flex justify-between items-center">
+                <h3 class="text-xl font-bold">Add New Provider</h3>
+                <button onclick="closeModal('add-modal')" class="text-gray-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div class="space-y-2">
+                    <label class="text-xs font-medium text-gray-400 uppercase">Provider Type</label>
+                    <select id="p-type" class="w-full bg-black/50 border border-white/10 rounded-lg p-3 focus:ring-2 ring-indigo-500 outline-none">
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic</option>
+                        <option value="groq">Groq</option>
+                        <option value="perplexity">Perplexity</option>
+                        <option value="elevenlabs">ElevenLabs</option>
+                    </select>
+                </div>
+                <div class="space-y-2">
+                    <label class="text-xs font-medium text-gray-400 uppercase">API Key</label>
+                    <input type="password" id="p-key" placeholder="sk-..." class="w-full bg-black/50 border border-white/10 rounded-lg p-3 focus:ring-2 ring-indigo-500 outline-none">
+                </div>
+                <button onclick="connectProvider()" class="w-full accent-gradient py-3 rounded-lg font-bold hover:opacity-90 transition">Connect Provider</button>
+            </div>
         </div>
-        <div style="display:flex;align-items:flex-end">
-          <button id="pConnectBtn" onclick="connect()">Connect</button>
-        </div>
-      </div>
-      <div id="msg"></div>
     </div>
 
-    <div class="section">
-      <h2>Providers · <span id="provCount">–</span></h2>
-      <div class="provider-grid" id="providers">Loading…</div>
-    </div>
-
-    <div class="section" id="alertsSec" style="display:none">
-      <h2>⚠️ Alerts</h2>
-      <div class="alert-list" id="alerts"></div>
-    </div>
-
-    <div class="section" id="todaySec" style="display:none">
-      <h2>📊 Today's Usage</h2>
-      <div id="todayList"></div>
-    </div>
-  </div>
-
-  <!-- ═══ Billing Tab ═══ -->
-  <div class="tab-pane" id="tab-billing">
-    <div class="section">
-      <h2>Choose your plan</h2>
-      <div class="plan-grid">
-        <div class="plan-card">
-          <h3>Free</h3>
-          <div class="price">$0<span>/mo</span></div>
-          <ul>
-            <li>3 providers</li>
-            <li>90-day history</li>
-            <li>Email alerts</li>
-          </ul>
-          <button class="secondary" disabled id="currentFreeBtn">Current plan</button>
+    <!-- MODAL: UPGRADE PROMPT -->
+    <div id="upgrade-modal" class="fixed inset-0 z-[70] hidden flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+        <div class="glass w-full max-w-md p-8 rounded-3xl text-center space-y-6 border-2 border-indigo-500/50">
+            <div class="w-16 h-16 accent-gradient rounded-full flex items-center justify-center mx-auto">
+                <i class="fa-solid fa-crown text-white text-2xl"></i>
+            </div>
+            <h3 class="text-2xl font-bold">Limit Reached!</h3>
+            <p class="text-gray-400">You've reached the maximum of 3 providers on the <b>Free Plan</b>. Upgrade to Pro to monitor unlimited APIs and unlock advanced alerts.</p>
+            <div class="flex flex-col gap-3">
+                <button onclick="checkout('pro')" class="w-full accent-gradient py-4 rounded-xl font-bold text-lg hover:scale-105 transition">Upgrade to Pro — $9/mo</button>
+                <button onclick="closeModal('upgrade-modal')" class="text-gray-500 text-sm hover:text-white">Maybe later</button>
+            </div>
         </div>
-        <div class="plan-card featured">
-          <h3>Pro</h3>
-          <div class="price">$9<span>/mo</span></div>
-          <ul>
-            <li>Unlimited providers</li>
-            <li>1-year history</li>
-            <li>Slack / Discord webhooks</li>
-            <li>Anomaly detection</li>
-          </ul>
-          <button id="upgradeProBtn" onclick="checkout('pro')">Upgrade to Pro</button>
-        </div>
-      </div>
     </div>
 
-    <div class="section">
-      <h2>Current subscription</h2>
-      <div id="subDetails">
-        <p style="color:var(--muted)">Loading subscription info…</p>
-      </div>
-    </div>
-  </div>
-</div>
+    <script>
+        const API_BASE = "https://quota-watcher.omisrani19.workers.dev/api";
+        let USER_TOKEN = localStorage.getItem("qw_token") || "guest";
+        let SUB_STATE = { plan: 'free', limit: 3, count: 0 };
 
-<!-- ═══ Upgrade Modal ═══ -->
-<div class="modal-overlay" id="upgradeModal">
-  <div class="modal">
-    <h2>🚀 Plan limit reached</h2>
-    <p id="modalBody">You've hit the limit for your current plan. Upgrade to Pro for unlimited providers and advanced features.</p>
-    <button onclick="checkout('pro')" style="width:100%;padding:12px;font-size:15px;">Upgrade to Pro — $9/mo</button>
-    <br><br>
-    <button class="secondary" onclick="closeModal()" style="width:100%;">Maybe later</button>
-  </div>
-</div>
+        async function fetchApi(endpoint, options = {}) {
+            const res = await fetch(`${API_BASE}${endpoint}`, {
+                ...options,
+                headers: { ...options.headers, "Authorization": `Bearer ${USER_TOKEN}` }
+            });
+            if (res.status === 401) {
+                USER_TOKEN = prompt("Please enter your API Token:");
+                localStorage.setItem("qw_token", USER_TOKEN);
+                return fetchApi(endpoint, options);
+            }
+            return res;
+        }
 
-<script>
-/* ── Config ──────────────────────────────────────────── */
-const API = "https://quota-watcher.omisrani19.workers.dev";
-let currentPlan = "free";
-let currentLimit = 3;
-let providerCount = 0;
+        async function syncSubscription() {
+            try {
+                const res = await fetchApi("/subscription");
+                const data = await res.json();
+                SUB_STATE = data;
+                
+                const badge = document.getElementById("planBadge");
+                badge.innerText = data.plan.toUpperCase();
+                badge.className = data.plan === 'free' ? 'plan-badge-free px-2 py-0.5 rounded-full text-xs font-medium uppercase tracking-wider' : 'plan-badge-pro px-2 py-0.5 rounded-full text-xs font-medium uppercase tracking-wider';
+                
+                document.getElementById("btn-free").className = data.plan === 'free' ? 'w-full py-2 rounded-lg bg-gray-700 text-white font-medium opacity-50 cursor-not-allowed' : 'w-full py-2 rounded-lg bg-white/10 text-white font-medium hover:bg-white/20 transition';
+                document.getElementById("btn-pro").className = data.plan !== 'free' ? 'w-full py-2 rounded-lg bg-gray-700 text-white font-medium opacity-50 cursor-not-allowed' : 'w-full py-2 rounded-lg bg-white text-indigo-600 font-bold hover:bg-gray-100 transition';
+            } catch (e) { console.error("Sub sync failed"); }
+        }
 
-function getAuth() {
-  let a = localStorage.getItem("qw_auth");
-  if (!a) {
-    a = "Bearer " + Date.now();
-    localStorage.setItem("qw_auth", a);
-  }
-  return a;
-}
+        async function loadProviders() {
+            try {
+                const res = await fetchApi("/providers");
+                const data = await res.json();
+                const list = document.getElementById("provider-list");
+                list.innerHTML = "";
+                
+                let totalSpend = 0;
+                data.forEach(p => {
+                    totalSpend += p.today_cost || 0;
+                    const row = `
+                        <tr class="hover:bg-white/5 transition group">
+                            <td class="py-4 px-4 truncate max-w-xs">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-6 h-6 rounded bg-white/10 flex items-center justify-center text-xs font-bold">${p.name[0].toUpperCase()}</div>
+                                    <span class="font-medium">${p.name}</span>
+                                </div>
+                            </td>
+                            <td class="py-4 px-4 text-gray-400">${((p.used / p.limit) * 100).toFixed(1)}%</td>
+                            <td class="py-4 px-4 font-mono text-indigo-400">$${p.today_cost.toFixed(4)}</td>
+                            <td class="py-4 px-4">
+                                <div class="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+                                    <div class="h-full accent-gradient" style="width: ${(p.used / p.limit) * 100}%"></div>
+                                </div>
+                            </td>
+                            <td class="py-4 px-4 text-right">
+                                <button onclick="removeProvider('${p.id}')" class="text-gray-600 hover:text-red-400 p-2 transition"><i class="fa-solid fa-trash"></i></button>
+                            </td>
+                        </tr>`;
+                    list.innerHTML += row;
+                });
 
-function setMsg(el, html, cls, ms = 4000) {
-  el.innerHTML = html;
-  el.className = cls;
-  el.style.display = "block";
-  if (ms) setTimeout(() => el.style.display = "none", ms);
-}
+                document.getElementById("stat-providers").innerText = data.length;
+                document.getElementById("stat-spending").innerText = "$" + totalSpend.toFixed(2);
+                document.getElementById("stat-alerts").innerText = data.filter(p => (p.used / p.limit) > 0.8).length;
+            } catch (e) { console.error("Load providers failed"); }
+        }
 
-/* ── Tabs ──────────────────────────────────────────── */
-function switchTab(name) {
-  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-  document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
-  document.querySelector(`.tab[onclick*='${name}']`).classList.add("active");
-  document.getElementById("tab-" + name).classList.add("active");
-}
+        async function connectProvider() {
+            const type = document.getElementById("p-type").value;
+            const key = document.getElementById("p-key").value;
+            
+            if (!key) return alert("API Key required");
 
-function showBilling() { switchTab("billing"); refreshSubscription(); }
+            // --- THE GATEKEEPER ---
+            if (SUB_STATE.plan === 'free' && SUB_STATE.count >= SUB_STATE.limit) {
+                closeModal('add-modal');
+                openModal('upgrade-modal');
+                return;
+            }
 
-/* ── Modal ─────────────────────────────────────────── */
-function openModal(msg) {
-  document.getElementById("modalBody").textContent = msg || "You've hit the limit for your current plan. Upgrade to Pro for unlimited providers.";
-  document.getElementById("upgradeModal").classList.add("open");
-}
-function closeModal() {
-  document.getElementById("upgradeModal").classList.remove("open");
-}
+            try {
+                const res = await fetchApi("/providers/connect", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ type, key })
+                });
+                if (res.ok) {
+                    closeModal('add-modal');
+                    loadProviders();
+                    syncSubscription();
+                } else {
+                    const err = await res.json();
+                    alert(err.error || "Connection failed");
+                }
+            } catch (e) { alert("API Error"); }
+        }
 
-/* ── Subscription ──────────────────────────────────── */
-async function refreshSubscription() {
-  const badge = document.getElementById("planBadge");
-  const meta  = document.getElementById("planMeta");
-  const subD  = document.getElementById("subDetails");
+        async function checkout(plan) {
+            try {
+                const res = await fetchApi("/subscription/checkout", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ plan })
+                });
+                const data = await res.json();
+                if (data.url) window.location.href = data.url;
+                else alert("Checkout failed: " + (data.error || "Unknown error"));
+            } catch (e) { alert("Billing API unreachable"); }
+        }
 
-  try {
-    const r = await fetch(API + "/api/subscription", {
-      headers: { Authorization: getAuth() },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!r.ok) throw new Error(r.status);
-    const d = await r.json();
-    currentPlan = d.plan_name || "free";
+        function showTab(tab) {
+            document.querySelectorAll(".tab-content").forEach(el => el.classList.add("hidden"));
+            document.getElementById("tab-" + tab).classList.remove("hidden");
+        }
 
-    badge.className = "plan-badge plan-" + currentPlan;
-    badge.innerHTML = (currentPlan === "free" ? "⚡ Free" : "🟣 Pro");
-    meta.textContent = currentPlan === "free" ? "3 providers max" : "Unlimited providers";
+        function openModal(id) { document.getElementById(id).classList.remove("hidden"); }
+        function closeModal(id) { document.getElementById(id).classList.add("hidden"); }
 
-    subD.innerHTML = currentPlan === "free"
-      ? `<p style="color:var(--muted)">You're on the Free plan. <a href="#" onclick="checkout('pro')" style="color:var(--accent)">Upgrade to Pro</a></p>`
-      : `<p style="color:var(--green)">✅ Pro plan active · Status: ${d.status || "active"}</p>`;
-
-    // Update buttons
-    document.getElementById("currentFreeBtn").disabled = currentPlan !== "free";
-    const upBtn = document.getElementById("upgradeProBtn");
-    upBtn.textContent = currentPlan === "free" ? "Upgrade to Pro" : "Manage subscription";
-    upBtn.className = currentPlan === "free" ? "" : "secondary";
-  } catch(e) {
-    meta.textContent = "offline";
-    subD.innerHTML = `<p style="color:var(--red)">Could not load subscription (${e.message})</p>`;
-  }
-}
-
-async function checkout(plan) {
-  const upBtn = document.getElementById("upgradeProBtn");
-  upBtn.disabled = true;
-  upBtn.textContent = "Redirecting…";
-  closeModal();
-
-  try {
-    const r = await fetch(API + "/api/subscription/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: getAuth() },
-      body: JSON.stringify({ plan }),
-    });
-    const d = await r.json();
-    if (d.url) {
-      window.location.href = d.url;
-    } else {
-      alert("Checkout error: " + JSON.stringify(d));
-    }
-  } catch(e) {
-    alert("Checkout failed: " + e.message);
-  } finally {
-    upBtn.disabled = false;
-    upBtn.textContent = plan === "pro" ? "Upgrade to Pro" : "Upgrade to Team";
-  }
-}
-
-/* ── Health ────────────────────────────────────────── */
-async function refreshHealth() {
-  const pill   = document.getElementById("healthPill");
-  const txt    = document.getElementById("healthTxt");
-  const sp     = document.getElementById("healthSpinner");
-  const tsLbl  = document.getElementById("tsLabel");
-  try {
-    const r = await fetch(API + "/api/health", { signal: AbortSignal.timeout(8000) });
-    const d = await r.json();
-    if (d.status === "healthy") {
-      pill.className = "pill pill-ok";
-      txt.textContent = "healthy · " + d.env;
-      sp.style.display = "none";
-      const age = Math.floor((Date.now() / 1000) - d.ts);
-      tsLbl.textContent = "age " + age + "s";
-    } else {
-      throwObject(d);
-    }
-  } catch(e) {
-    pill.className = "pill pill-err";
-    txt.textContent = "unreachable";
-    sp.style.display = "none";
-    tsLbl.textContent = "";
-  }
-}
-
-/* ── Rate-limit helper ─────────────────────────────── */
-let _pending = null;
-function rate(fn) {
-  if (_pending) return _pending;
-  _pending = fn().finally(() => { _pending = null; });
-  return _pending;
-}
-
-/* ── Connect ───────────────────────────────────────── */
-function applyDefaultCap() {
-  const caps = { openai: "50", anthropic: "50", groq: "50", perplexity: "30", elevenlabs: "30" };
-  document.getElementById("pCap").value = caps[document.getElementById("pProvider").value] || "50";
-}
-
-async function connect() {
-  const btn = document.getElementById("pConnectBtn");
-  const msg = document.getElementById("msg");
-  const body = {
-    provider_name: document.getElementById("pProvider").value,
-    api_key:       document.getElementById("pKey").value.trim(),
-    name:          document.getElementById("pName").value.trim() || undefined,
-    budget_cap:    parseFloat(document.getElementById("pCap").value) || 0,
-    alert_threshold_percent: parseInt(document.getElementById("pAlert").value) || 80,
-  };
-  if (!body.provider_name || !body.api_key) {
-    setMsg(msg, "Provider name and API key are required.", "error");
-    return;
-  }
-  btn.disabled = true;
-  btn.textContent = "…";
-  try {
-    const r = await fetch(API + "/api/providers/connect", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": getAuth() },
-      body: JSON.stringify(body),
-    });
-    const d = await r.json();
-
-    // Handle plan limit error with upgrade modal
-    if (!r.ok) {
-      if (d.error === "Plan limit reached") {
-        openModal(`You have ${providerCount} providers connected, but your ${currentPlan} plan allows only ${d.limit}. Upgrade to add more.`);
-        return;
-      }
-      throwObject(d);
-    }
-
-    localStorage.setItem("qw_auth", d.id || "Bearer " + Date.now());
-    if (d.id) localStorage.setItem("qw_org", d.id);
-    setMsg(msg, "Connected! Provider ID: <code>" + (d.id || "—") + "</code>", "success", 6000);
-    document.getElementById("pKey").value = "";
-    refreshProviders();
-  } catch(e) {
-    setMsg(msg, "Error: " + (e.message || e), "error");
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Connect";
-  }
-}
-
-/* ── Providers ─────────────────────────────────────── */
-async function refreshProviders() {
-  const grid = document.getElementById("providers");
-  const count = document.getElementById("provCount");
-  const limit = document.getElementById("provLimit");
-  try {
-    const r = await fetch(API + "/api/providers", {
-      headers: { Authorization: getAuth() },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!r.ok) { grid.innerHTML = `<span style="color:var(--red)">${r.status} — auth or server error</span>`; return; }
-    const data = await r.json();
-
-    // Handle nested format: { providers: [...], plan: "free", limit: 3 }
-    const rows = data.providers || data;
-    currentPlan = data.plan || "free";
-    currentLimit = data.limit || 3;
-    providerCount = rows.length;
-
-    count.textContent = rows.length;
-    limit.textContent = `(${rows.length}/${currentLimit} used)`;
-
-    // Update plan bar
-    const badge = document.getElementById("planBadge");
-    badge.className = "plan-badge plan-" + currentPlan;
-    badge.innerHTML = currentPlan === "free" ? "⚡ Free" : "🟣 Pro";
-
-    if (!rows.length) { grid.innerHTML = "<p style='color:var(--muted)'>No providers connected yet.</p>"; return; }
-
-    grid.innerHTML = rows.map(p => {
-      const cap    = p.budget_cap || 0;
-      const used   = p.total_cost || 0;
-      const pct    = cap > 0 ? Math.min(100, (used / cap) * 100) : 0;
-      const pctCls = pct >= 90 ? "pct-alert" : pct >= 60 ? "pct-warn" : "pct-ok";
-      const barCls = pct >= 90 ? "bg-red"   : pct >= 60 ? "bg-yellow" : "bg-green";
-      const barColors = { bg_red:"var(--red)", bg_yellow:"var(--yellow)", bg_green:"var(--green)" };
-      const lastPolled = p.last_polled_at ? new Date(Number(p.last_polled_at) * 1000).toLocaleString() : "never";
-      const icon = { openai: "🟢", anthropic: "🟣", groq: "🟡", perplexity: "🔵", elevenlabs: "🔴" }[p.provider_name] || "⚙️";
-      return `
-        <div class="provider-card" id="prov-${p.id}">
-          <button class="del" onclick="deleteProv('${p.id}')">remove</button>
-          <h3>${icon} ${p.name || p.provider_name}</h3>
-          <div class="meta">${p.provider_name} · polled: ${lastPolled}</div>
-          <div class="budget-bar">
-            <div class="bar-label"><span>$${used.toFixed(2)} / $${cap.toFixed(2)}</span><span>${pct.toFixed(1)}%</span></div>
-            <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${barColors[barCls]}"></div></div>
-            <div class="pct ${pctCls}">${pct.toFixed(1)}%</div>
-            <div class="today-cost" id="today-${p.id}">Today: loading…</div>
-          </div>
-        </div>`;
-    }).join("");
-
-    (rows || []).forEach(p => loadToday(p.id));
-  } catch(e) {
-    grid.innerHTML = "<span style='color:var(--red)'>List error: " + e.message + "</span>";
-  }
-}
-
-async function loadToday(pid) {
-  const el = document.getElementById("today-" + pid);
-  if (!el) return;
-  try {
-    const r = await fetch(API + "/api/providers/" + pid + "/today", {
-      headers: { Authorization: getAuth() },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!r.ok) { el.textContent = "Today: unavailable"; return; }
-    const d = await r.json();
-    if (!d) { el.textContent = "Today: no data yet"; return; }
-    el.innerHTML = `Today: <span>$${(d.derived_cost || 0).toFixed(4)}</span> · ${d.totalRequests || "?"} req · ${d.totalInputTokens || "?"} in / ${d.totalOutputTokens || "?"} out tokens`;
-  } catch(e) {
-    el.textContent = "Today: error";
-  }
-}
-
-async function deleteProv(pid) {
-  if (!confirm("Remove this provider?")) return;
-  try {
-    const r = await fetch(API + "/api/providers/" + pid, {
-      method: "DELETE",
-      headers: { Authorization: getAuth() },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!r.ok) throw new Error(r.status);
-    refreshProviders();
-  } catch(e) {
-    alert("Delete failed: " + e.message);
-  }
-}
-
-/* ── Error helper ──────────────────────────────────── */
-function throwObject(d) { throw new Error(JSON.stringify(d)); }
-
-/* ── Init ──────────────────────────────────────────── */
-refreshHealth();
-refreshSubscription();
-refreshProviders();
-setInterval(refreshHealth, 60000);
-setInterval(refreshProviders, 30000);
-</script>
+        // Init
+        loadProviders();
+        syncSubscription();
+        setInterval(loadProviders, 60000);
+    </script>
 </body>
 </html>
