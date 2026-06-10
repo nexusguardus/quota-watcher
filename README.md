@@ -83,7 +83,7 @@ npx wrangler publish
 https://quota-watcher.omisrani19.workers.dev/api/health
 ```
 
-> ⚠️ Do **not** use the raw account ID (`ab6cdeed411ce91689e8918e69242c41`) — Cloudflare
+> ⚠️ Do **not** use the raw account ID (`xxxxxxxxxxxxxxxxxxxxxxxxx`) — Cloudflare
 > uses the **account label** (`omisrani19`) for the `workers.dev` subdomain.
 
 ## Verify health endpoint
